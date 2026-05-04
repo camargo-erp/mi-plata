@@ -223,7 +223,10 @@ function formatMoney(n) {
 }
 
 function formatDate(d) {
-  const date = new Date(d + "T12:00:00");
+  if (!d) return "—";
+  const str = String(d).includes("T") ? String(d).split("T")[0] : String(d);
+  const date = new Date(str + "T12:00:00");
+  if (isNaN(date)) return String(d);
   return date.getDate() + " " + MESES[date.getMonth()];
 }
 
@@ -252,7 +255,28 @@ async function fetchMovimientos() {
     const res = await fetch(APPS_SCRIPT_URL);
     const json = await res.json();
     if (json.ok) {
-      state.movimientos = json.data;
+      // Normalizar datos robustamente
+      state.movimientos = json.data.map(m => {
+        // Fecha: asegurar formato YYYY-MM-DD
+        let fecha = String(m.fecha || "");
+        if (fecha.includes("T")) fecha = fecha.split("T")[0]; // "2026-04-20T03:00:00.000Z" → "2026-04-20"
+        if (!fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          // Intentar parsear como Date
+          const d = new Date(m.fecha);
+          if (!isNaN(d)) fecha = d.toISOString().split("T")[0];
+        }
+        return {
+          ...m,
+          id: String(m.id || ""),
+          fecha: fecha,
+          tipo: String(m.tipo || "").toLowerCase().trim(),
+          monto: Number(m.monto) || 0,
+          categoria: String(m.categoria || "Otro"),
+          medio: String(m.medio || "efectivo").toLowerCase().trim(),
+          descripcion: String(m.descripcion || ""),
+          usuario: String(m.usuario || "")
+        };
+      }).filter(m => m.id && m.fecha);
     } else {
       state.syncError = json.error || "Error al cargar";
     }
@@ -629,7 +653,7 @@ function renderHistorial() {
 function renderMovRow(m, showActions) {
   const medioIcon = (m.medio || "efectivo") === "transferencia" ? "📲" : "💵";
   const usuarioObj = USUARIOS.find(u => u.id === m.usuario);
-  const userTag = usuarioObj ? usuarioObj.nombre : (m.usuario || "");
+  const userTag = usuarioObj ? usuarioObj.nombre : (m.usuario && m.usuario !== "undefined" && m.usuario !== "null" ? m.usuario : "");
 
   let h = '<div class="mov-row">';
   h += '<div class="mov-left">';
